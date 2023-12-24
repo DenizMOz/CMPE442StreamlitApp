@@ -4,14 +4,19 @@ from ucimlrepo import fetch_ucirepo
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.preprocessing import  OneHotEncoder, PolynomialFeatures, MinMaxScaler
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import SelectKBest, f_classif
 # Fetch and Prepare Data
 @st.cache_data
 def load_data():
     bank_marketing = fetch_ucirepo(id=222)
     X = bank_marketing.data.features
     y = bank_marketing.data.targets
+    X=X.drop(columns=['duration'])
+    X['no_previous_contact'] = X['pdays'].apply(lambda x: 1 if x == 999 else 0)
+    X=X.drop(columns=['pdays'])
+
     return X, y
 # Define preprocessing steps and train model
 @st.cache_data()
@@ -20,17 +25,22 @@ def initialize_and_train_model(X, y):
     categorical_features = X.select_dtypes(include=['object']).columns
 
     numeric_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='median')),
-        ('scaler', StandardScaler())])
+    ('imputer', SimpleImputer(strategy='mean')), 
+    ('polynomial', PolynomialFeatures(degree=2, include_bias=False)), 
+    ('scaler', MinMaxScaler()),
+    ('feature_selector', SelectKBest(score_func=f_classif, k=10))
+    ])
 
     categorical_transformer = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))])
+    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')), 
+    ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
 
     preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numeric_transformer, numeric_features),
-            ('cat', categorical_transformer, categorical_features)])
+    transformers=[
+        ('num', numeric_transformer, numeric_features),
+        ('cat', categorical_transformer, categorical_features)
+    ])
 
     model = Pipeline(steps=[('preprocessor', preprocessor),
                             ('classifier', RandomForestClassifier(random_state=42, max_depth=20, max_features='sqrt', n_estimators=300))])
@@ -57,11 +67,11 @@ def main():
     housing = st.radio("Has Housing Loan?", options=["yes", "no"])
     loan = st.radio("Has Personal Loan?", options=["yes", "no"])
     contact = st.selectbox("Contact Communication Type", options=["cellular", "telephone", "unknown"])
-    day_of_week = st.number_input("Last Contact Day of the Week", min_value=1, max_value=31, value=15)
+    day_of_week = st.number_input("Last Contact Day of the Month", min_value=1, max_value=31, value=15)
     month = st.selectbox("Last Contact Month", options=["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])
-    duration = st.number_input("Last Contact Duration (in seconds)", min_value=0, max_value=5000, value=100)
+    contacted = st.radio("Contacted Previously?", options=["yes", "no"])
+    contacted_numeric = 1 if contacted == 'yes' else 0
     campaign = st.number_input("Number of Contacts During This Campaign", min_value=1, max_value=100, value=1)
-    pdays = st.number_input("Number of Days Passed After Being Last Contacted", min_value=-1, max_value=1000, value=0)
     previous = st.number_input("Number of Contacts Before This Campaign", min_value=0, max_value=300, value=0)
     poutcome = st.selectbox("Outcome of Previous Marketing Campaign", options=["failure", "other", "success", "unknown"])
     
@@ -69,10 +79,10 @@ def main():
     if st.button('Predict'):
         # Create a DataFrame or Series from user inputs
         input_data = pd.DataFrame([[
-            age, balance, duration, campaign, pdays, previous,  # Numeric features
+            age, balance, contacted_numeric ,campaign, previous,  # Numeric features
             job, marital_status, education, default, housing, loan, contact, day_of_week, month, poutcome  # Categorical features
         ]], columns=[
-            'age', 'balance', 'duration', 'campaign', 'pdays', 'previous',  # Numeric feature names
+            'age', 'balance', 'no_previous_contact', 'campaign', 'previous',  # Numeric feature names
             'job', 'marital', 'education', 'default', 'housing', 'loan', 'contact', 'day_of_week', 'month', 'poutcome'  # Categorical feature names
         ])
         
