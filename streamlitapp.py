@@ -6,7 +6,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.ensemble import RandomForestClassifier
-
 # Fetch and Prepare Data
 @st.cache_data
 def load_data():
@@ -14,35 +13,40 @@ def load_data():
     X = bank_marketing.data.features
     y = bank_marketing.data.targets
     return X, y
+# Define preprocessing steps and train model
+@st.cache_data()
+def initialize_and_train_model(X, y):
+    numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
+    categorical_features = X.select_dtypes(include=['object']).columns
 
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())])
+
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))])
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)])
+
+    model = Pipeline(steps=[('preprocessor', preprocessor),
+                            ('classifier', RandomForestClassifier(random_state=42, max_depth=20, max_features='sqrt', n_estimators=300))])
+    model.fit(X, y)
+    return model
+# Load data and train model
 X, y = load_data()
+model = initialize_and_train_model(X, y)
 
-# Define Preprocessing Steps
-numeric_features = X.select_dtypes(include=['int64', 'float64']).columns
-categorical_features = X.select_dtypes(include=['object']).columns
 
-numeric_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='median')),
-    ('scaler', StandardScaler())])
 
-categorical_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-    ('onehot', OneHotEncoder(handle_unknown='ignore'))])
-
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', numeric_transformer, numeric_features),
-        ('cat', categorical_transformer, categorical_features)])
-
-# Initialize and Train Model
-model = Pipeline(steps=[('preprocessor', preprocessor),
-                        ('classifier', RandomForestClassifier(random_state=42, max_depth=20, max_features='sqrt', n_estimators=300))])
-model.fit(X, y)
-
-# Streamlit App
 def main():
     st.title("Bank Marketing Prediction App")
-    
+    st.header("Predictive Analysis")
+    st.text("Use the inputs below to predict marketing outcomes.")
+
     # User Inputs for Prediction
     age = st.number_input("Age", min_value=18, max_value=95, value=30)
     job = st.selectbox("Job Type", options=['admin.', 'blue-collar', 'entrepreneur', 'management', 'retired', 'self-employed', 'services', 'student', 'technician', 'unemployed', 'housemaid', 'unknown'])
@@ -60,16 +64,21 @@ def main():
     pdays = st.number_input("Number of Days Passed After Being Last Contacted", min_value=-1, max_value=1000, value=0)
     previous = st.number_input("Number of Contacts Before This Campaign", min_value=0, max_value=300, value=0)
     poutcome = st.selectbox("Outcome of Previous Marketing Campaign", options=["failure", "other", "success", "unknown"])
-
+    
     # When the user inputs all required fields, you can make a prediction:
     if st.button('Predict'):
         # Create a DataFrame or Series from user inputs
-        input_data = pd.DataFrame([[age, job, marital_status, education, default, balance, housing, loan, contact, day_of_week, month, duration, campaign, pdays, previous, poutcome]], 
-                                  columns=numeric_features.tolist() + categorical_features.tolist())
+        input_data = pd.DataFrame([[
+            age, balance, duration, campaign, pdays, previous,  # Numeric features
+            job, marital_status, education, default, housing, loan, contact, day_of_week, month, poutcome  # Categorical features
+        ]], columns=[
+            'age', 'balance', 'duration', 'campaign', 'pdays', 'previous',  # Numeric feature names
+            'job', 'marital', 'education', 'default', 'housing', 'loan', 'contact', 'day_of_week', 'month', 'poutcome'  # Categorical feature names
+        ])
         
         # Make Prediction
         prediction = model.predict(input_data)
         st.write(f"The predicted outcome is: {'Yes' if prediction[0] == 'yes' else 'No'}")
-        
-        if __name__ == "__main__":
-            main()
+
+if __name__ == "__main__":
+    main()
